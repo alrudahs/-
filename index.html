@@ -360,7 +360,7 @@
 </header>
 
 <!-- ② 히어로 -->
-<section class="hero">
+<section class="hero" data-section="hero">
   <div class="wrap">
     <div>
       <span class="channel-chip" id="channelChip">🎉 배민 첫 입점 사장님 전용 혜택</span>
@@ -390,7 +390,7 @@
 </section>
 
 <!-- ③ 공감 (고민 → 혜택 연결) -->
-<section class="pain">
+<section class="pain" data-section="pain_points">
   <div class="wrap center">
     <span class="eyebrow">사장님, 이런 고민 있으시죠?</span>
     <h2 class="sec-title">배달앱, 시작은 하고 싶은데<br>막막하셨던 이유</h2>
@@ -405,7 +405,7 @@
 </section>
 
 <!-- ④ 핵심 혜택 4가지 -->
-<section id="benefits">
+<section id="benefits" data-section="benefits">
   <div class="wrap">
     <div class="center">
       <span class="eyebrow">신규 입점 혜택</span>
@@ -481,7 +481,7 @@
 </section>
 
 <!-- ⑤ 혜택 비교 -->
-<section class="compare">
+<section class="compare" data-section="compare">
   <div class="wrap center">
     <span class="eyebrow">한눈에 비교</span>
     <h2 class="sec-title">지금 시작하면 <span class="hl">이만큼</span> 달라져요</h2>
@@ -503,7 +503,7 @@
 </section>
 
 <!-- ⑥ 시작 3단계 -->
-<section>
+<section data-section="steps">
   <div class="wrap center">
     <span class="eyebrow">시작 방법</span>
     <h2 class="sec-title">어렵지 않아요, <span class="hl">딱 3단계</span>면 끝</h2>
@@ -524,7 +524,7 @@
 </section>
 
 <!-- ⑦ 초보 사장님 지원 -->
-<section class="support">
+<section class="support" data-section="support">
   <div class="wrap center">
     <span class="eyebrow">프로모션이 어려운 사장님도 걱정 마세요</span>
     <h2 class="sec-title">몰라도 괜찮아요,<br>배민이 옆에서 도와드릴게요</h2>
@@ -538,7 +538,7 @@
 </section>
 
 <!-- ⑧ 사장님 후기 (혜택별 1개씩 연결) -->
-<section>
+<section data-section="reviews">
   <div class="wrap center">
     <span class="eyebrow">먼저 시작한 사장님들</span>
     <h2 class="sec-title">"진작 할 걸 그랬어요"</h2>
@@ -552,7 +552,7 @@
 </section>
 
 <!-- ⑨ FAQ -->
-<section class="faq">
+<section class="faq" data-section="faq">
   <div class="wrap center">
     <span class="eyebrow">자주 묻는 질문</span>
     <h2 class="sec-title">궁금한 점, 미리 알려드려요</h2>
@@ -568,7 +568,7 @@
 </section>
 
 <!-- ⑩ 최종 CTA (앱 다운로드) -->
-<section class="final" id="download">
+<section class="final" id="download" data-section="download">
   <div class="wrap">
     <h2>신규 사장님 4가지 혜택,<br>지금 앱에서 바로 받으세요</h2>
     <div class="chips">
@@ -604,6 +604,35 @@
   </div>
 </div>
 
+<!-- Amplitude: 키는 .env 에서 관리 → scripts/build-config.ps1 이 amplitude-config.js 를 생성 -->
+<script src="amplitude-config.js"></script>
+<script>
+  // SDK 로드 전에 발생한 이벤트는 큐에 모았다가 초기화 후 전송
+  window.ampQueue = [];
+  window.ampTrack = function (name, props) {
+    if (window.amplitude && window.amplitude.track && window.ampReady) window.amplitude.track(name, props);
+    else window.ampQueue.push([name, props]);
+  };
+  (function () {
+    var cfg = window.AMPLITUDE_CONFIG;
+    if (!cfg || !cfg.apiKey) { console.warn('[Amplitude] amplitude-config.js 가 없어 추적을 건너뜁니다.'); return; }
+    var s = document.createElement('script');
+    s.src = 'https://cdn.amplitude.com/script/' + cfg.apiKey + '.js';
+    s.async = true;
+    s.onload = function () {
+      if (window.sessionReplay) window.amplitude.add(window.sessionReplay.plugin({ sampleRate: 1 }));
+      window.amplitude.init(cfg.apiKey, {
+        serverZone: cfg.serverZone || 'US',
+        fetchRemoteConfig: true,
+        autocapture: { attribution: true, pageViews: true, sessions: true, formInteractions: true, fileDownloads: true, elementInteractions: true }
+      });
+      window.ampReady = true;
+      window.ampQueue.forEach(function (e) { window.amplitude.track(e[0], e[1]); });
+      window.ampQueue = [];
+    };
+    document.head.appendChild(s);
+  })();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
   // ===== 설정: 실제 스토어 링크로 교체하세요 =====
@@ -669,11 +698,67 @@
   }, { threshold: 0.15 });
   document.querySelectorAll('.reveal').forEach(el => io.observe(el));
 
-  // 클릭 트래킹 (GA4/GTM 연동 시 dataLayer 사용)
+  // ===== 이벤트 트래킹 (Amplitude + GA4/GTM dataLayer) =====
+  const device = deviceStore ? (isIOS ? 'ios' : 'android') : 'desktop';
+  const baseProps = { utm_source: source || 'direct', utm_medium: params.get('utm_medium') || '', utm_campaign: params.get('utm_campaign') || '', device };
+
+  // 1) 랜딩 페이지 진입
+  ampTrack('Landing Page Viewed', { ...baseProps, channel_copy: document.getElementById('channelChip').textContent });
+
+  // 2) CTA 노출·클릭 (CTA별 노출 수 → 클릭 수 = 클릭률)
+  //    모든 CTA는 data-track 으로 식별: header_cta, hero_cta, benefit_cta, steps_cta, sticky_cta, store_android, store_ios
+  const ctaProps = el => ({
+    ...baseProps,
+    cta: el.dataset.track,
+    cta_text: el.textContent.replace(/\s+/g, ' ').trim(),
+    cta_section: el.closest('[data-section]')?.dataset.section || (el.closest('header') ? 'header' : el.closest('.sticky-cta') ? 'sticky_bar' : 'other'),
+    destination: el.getAttribute('href') === '#download' ? 'download_section' : 'app_store'
+  });
+
+  // 노출: 버튼이 화면에 50% 이상 보이면 CTA별로 페이지당 1회 기록
+  //       (하단 고정 버튼은 숨김 상태에선 화면 밖에 있어 노출로 잡히지 않음)
+  const ctaSeen = new Set();
+  const ctaIO = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      const el = e.target;
+      if (!e.isIntersecting || ctaSeen.has(el.dataset.track) || getComputedStyle(el.closest('.sticky-cta') || el).visibility === 'hidden') return;
+      ctaSeen.add(el.dataset.track);
+      ampTrack('CTA Viewed', ctaProps(el));
+      ctaIO.unobserve(el);
+    });
+  }, { threshold: 0.5 });
+
+  // 클릭: 누를 때마다 기록
   window.dataLayer = window.dataLayer || [];
   document.querySelectorAll('[data-track]').forEach(el => {
+    ctaIO.observe(el);
     el.addEventListener('click', () => {
       window.dataLayer.push({ event: 'cta_click', cta: el.dataset.track, utm_source: source || 'direct' });
+      ampTrack('CTA Clicked', ctaProps(el));
+    });
+  });
+
+  // 스토어로 이동하며 페이지를 떠날 때도 남은 이벤트가 유실되지 않도록 beacon 으로 전송
+  addEventListener('pagehide', () => {
+    if (window.ampReady) { window.amplitude.setTransport('beacon'); window.amplitude.flush(); }
+  });
+
+  // 3) 섹션 도달 (어디서 이탈하는지 퍼널 분석용, 섹션별 1회)
+  const sectionOrder = [...document.querySelectorAll('[data-section]')].map(s => s.dataset.section);
+  const seen = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (!e.isIntersecting) return;
+      const name = e.target.dataset.section;
+      ampTrack('Section Viewed', { ...baseProps, section: name, section_index: sectionOrder.indexOf(name) + 1 });
+      seen.unobserve(e.target);
+    });
+  }, { threshold: 0.4 });
+  document.querySelectorAll('[data-section]').forEach(s => seen.observe(s));
+
+  // 4) FAQ 펼침 (사장님들이 무엇을 궁금해하는지)
+  document.querySelectorAll('.faq details').forEach(d => {
+    d.addEventListener('toggle', () => {
+      if (d.open) ampTrack('FAQ Opened', { ...baseProps, question: d.querySelector('summary').textContent.trim() });
     });
   });
 </script>
